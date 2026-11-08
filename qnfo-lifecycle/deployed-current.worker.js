@@ -1,4 +1,4 @@
-var VERSION = "1.19.3-codeagent";
+var VERSION = "1.19.4-codeagent";
 // WORKERS-AI-ATTRIBUTION-1 (2026-10-01, #1681): per-worker Workers AI attribution. Returns a shallow env copy whose AI
 // binding records each .run() (calls, errors, ms, tokens, neurons) into qnfo-audit ai_call_counters (purpose 'binding').
 // Neurons = usage tokens x Cloudflare's published per-model rates (neurons per M tokens). Fail-soft; env is never mutated.
@@ -3578,6 +3578,45 @@ function withPaperLearn(inner) {
           }
         } catch (e) {
           console.error("[qnfo-lifecycle] paper-ledger-chain error:", String(e && e.message || e));
+          // ADR-013: pin ULA version hashes and alert on changes
+          if (env.QNFO_AUDIT) {
+            try {
+              const ulaUrls = [
+                "https://legal.qnfo.org",
+                "https://qnfo.org/legal/license",
+                "https://qnfo.org/legal/license"
+              ];
+              const now = new Date().toISOString();
+              for (const url of ulaUrls) {
+                const resp = await fetch(url);
+                const body = await resp.text();
+                const hashBuf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+                const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+                // derive a version identifier, e.g., from a "Version:" line or fallback to URL
+                let version = url;
+                const m = /Version:\s*([^\s]+)/i.exec(body);
+                if (m) version = m[1];
+                const row = await env.QNFO_AUDIT.prepare("SELECT sha256 FROM ula_version_pins WHERE version = ?1").bind(version).first();
+                if (!row) {
+                  // new pin
+                  await env.QNFO_AUDIT.prepare("INSERT INTO ula_version_pins (version, url, sha256, first_seen) VALUES (?1, ?2, ?3, ?4)").bind(version, url, hashHex, now).run();
+                } else if (row.sha256 !== hashHex) {
+                  // hash mismatch - alert
+                  await env.QNFO_AUDIT.prepare(
+                    "INSERT INTO cloud_ops_events (id, ts, kind, text, meta, job, status) VALUES (?1, ?2, 'ula-changed', ?3, ?4, 'ula-pinning', 'degraded')"
+                  ).bind(
+                    "ula-changed-" + Date.now().toString(36),
+                    now,
+                    `ULA version ${version} hash changed (old=${row.sha256}, new=${hashHex})`,
+                    JSON.stringify({ version, url, old_hash: row.sha256, new_hash: hashHex })
+                  ).run();
+                  // do not update the pin
+                }
+              }
+            } catch (e) {
+              console.error("[qnfo-lifecycle] ula pinning error:", e);
+            }
+          }
         }
       }
       if (first) throw first;
