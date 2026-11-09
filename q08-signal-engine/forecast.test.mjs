@@ -57,6 +57,7 @@ check("judge verdict parses and normalises", F.parseJudgeVerdict('<think>x</thin
 check("two agreeing judges settle; a split or an unclear does not", F.aggregateJudges([{ outcome: "yes", basis: "a" }, { outcome: "yes", basis: "b" }]).outcome === "yes" && F.aggregateJudges([{ outcome: "yes" }, { outcome: "no" }]).outcome === "unclear" && F.aggregateJudges([{ outcome: "unclear" }, { outcome: "unclear" }]).outcome === "unclear" && F.aggregateJudges([{ outcome: "yes" }, null]).outcome === "unclear");
 check("forecast cap parses 0..10 and defaults to 3", F.parseForecastCap("0") === 0 && F.parseForecastCap("7") === 7 && F.parseForecastCap("99") === 10 && F.parseForecastCap("x") === 3 && F.parseForecastCap(undefined) === 3);
 check("the directive keeps the FACTS rule and forbids invented projections", /FACTS \(hard, non-negotiable, and checked\)/.test(F.FORECAST_DIRECTIVE) && /Never state a projected quantity/.test(F.FORECAST_DIRECTIVE) && /at least as probable as each alternative/.test(F.FORECAST_DIRECTIVE));
+check("leading indicators name a public place an outsider can check", /LEADING INDICATORS: say which two to five things an outsider can watch, what each would look like if your scenario is on track and if it is not, and for each one the public place an outsider can check it \(a status page, filing, repository, price or dashboard\), named plainly in a few words\./.test(F.FORECAST_DIRECTIVE));
 
 // ---- handlers over in-memory SQLite --------------------------------------------------------------------------------
 const db = new DatabaseSync(":memory:");
